@@ -14,7 +14,7 @@ This code was used for the paper ""
     - pysam (tested with 0.16.0.1)
     - pandas (tested with 1.1.5)
     
-    **Note:** Kraken2, Bowtie2, and samtools need to be added to the PATH Environment Variable
+    **Note:** Kraken2, Bowtie2, and samtools need to be added to the PATH Environment Variable. 
     If you encounter issues, please try to run in an environment with these packages.
 
 ## Install
