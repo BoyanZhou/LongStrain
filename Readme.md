@@ -30,6 +30,7 @@ There are following steps for analysis of longitudinal metagenomic data using Lo
 ### step1: fastq_preprocess
 Process the longitudinal samples of one subject at each time.
 ```python longstrain.py -m fastq_preprocess -i PATH/subject1 -o PATH/all_subject_results -l PATH/all_subjects.log -s subject1 -p subject_t1,subject_t2 -f subject_t1_R1.fastq.gz,subject_t1_R2.fastq.gz:subject_t2.fastq.gz --kraken_database PATH_to_kraken_database/NCBI_standard```
+
 ```-i PATH/subject1``` is the directory of all longitudinal fq files from subject1;
 ```-o PATH/all_subject_results``` is the directory to store results from all subjects;
 ```-l PATH/all_subjects.log``` is the absolute path of log file;
