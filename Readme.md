@@ -7,12 +7,14 @@ This code was used for the paper ""
 ## Requirements
 
 1.  Kraken2 (tested with 2.0.8)
-2.  Bowtie2
-3.  This code was written and tested on python 3.6.5, and requires the following packages:
+2.  Bowtie2 (tested with 0.16.0.1)
+3.  samtools (tested with 1.9)
+4.  This code was written and tested on python 3.6.5, and requires the following packages:
     - numpy (tested with 1.19.5)
     - pysam (tested with 0.16.0.1)
     - pandas (tested with 1.1.5)
-
+    
+    **Note:** Kraken2, Bowtie2, and samtools need to be added to the PATH Environment Variable
     If you encounter issues, please try to run in an environment with these packages.
 
 ## Install
@@ -28,7 +30,7 @@ This code was used for the paper ""
 There are following steps for analysis of longitudinal metagenomic data using LongStrain.
 
 ### step1: fastq_preprocess
-Process the longitudinal samples of one subject at each time.
+Process the longitudinal samples of one subject at each time.  
 ```python longstrain.py -m fastq_preprocess -i PATH/subject1 -o PATH/all_subject_results -l PATH/all_subjects.log -s subject1 -p subject_t1,subject_t2 -f subject_t1_R1.fastq.gz,subject_t1_R2.fastq.gz:subject_t2.fastq.gz --kraken_database PATH_to_kraken_database/NCBI_standard```
 
 * ```-i PATH/subject1``` is the directory of all longitudinal fq files from subject1;
