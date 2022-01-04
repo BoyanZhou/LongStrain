@@ -203,7 +203,10 @@ class Subject:
                 # add pileup information to pre-defined arrays
                 # pc_ref_pos = pc.reference_pos
                 pc_index = pc.reference_pos - target_bin[0]
-                piled_bases = pc.get_query_sequences(mark_matches=True, mark_ends=False, add_indels=True)
+                try:
+                    piled_bases = pc.get_query_sequences(mark_matches=True, mark_ends=False, add_indels=True)
+                except AssertionError:
+                    continue
 
                 # pos_in_ref = boundary[0] + pc_index     # record position in ref
                 bin_results_depth[pc_index, sample_i] = len(piled_bases)  # record depth
@@ -262,8 +265,10 @@ class Subject:
                         # if pc.reference_pos not in pos_read_names_dict: continue
 
                         # store 0-1: whether it is a mutation
-                        piled_bases = np.array(
-                            pc.get_query_sequences(mark_matches=True, mark_ends=False, add_indels=True))
+                        try:
+                            piled_bases = np.array(pc.get_query_sequences(mark_matches=True, mark_ends=False, add_indels=True))
+                        except AssertionError:
+                            continue
                         whether_mutation = np.full(len(piled_bases), 1)
                         whether_mutation[piled_bases == "."] = 0
                         whether_mutation[piled_bases == ","] = 0
@@ -409,7 +414,7 @@ class Subject:
         :param surrounding_range: definition of surrounding pos, default +- 10 bp
         :return: np.array of indel pos; bool array of indel_surrounding in sorted_effective_pos
         """
-        indel_surrounding_index_bool = np.full(False, len(sorted_effective_pos))
+        indel_surrounding_index_bool = np.full(len(sorted_effective_pos), False)
         indel_pos_list = [i for i in sorted_effective_pos if pos_genotype_base[i][1][0] in ["-", "+"]]
         if len(indel_pos_list) > 0:
             # get all intervals of indel surrounding
@@ -460,7 +465,9 @@ class Subject:
         if pos_read_names_effective == {}:
             # all are variant sites; get the coverage of target bins in all samples
             # find the index of target bins in reads_bin_chromosome
-            all_target_bin_start, all_bin_index, target_bin_index = np.intersect1d(reads_bin_chromosome[:, 0], target_bins[:, 0])
+            all_target_bin_start, all_bin_index, target_bin_index = np.intersect1d(reads_bin_chromosome[:, 0],
+                                                                                   target_bins[:, 0],
+                                                                                   return_indices=True)
             # assigned all reads count to the dominant strain
             sample_reads_count_in_target_bins = np.sum(reads_bin_chromosome[all_bin_index, 2:], axis=0)
             # initial counts of secondary strain, can not < 1
@@ -471,7 +478,7 @@ class Subject:
             return reads_count_by_strains
 
         else:
-            haplotypes, reads_count_by_strains, posterior_probability_dict = longstrain.haplotype.haplotype_identification(
+            haplotypes, reads_count_by_strains, posterior_probability_dict = haplotype.haplotype_identification(
                 pos_read_names_effective, len(self.sample_names))
             # record strain proportions
             with open(f"{self.ID}_strain_proportion_record.txt", "w") as record_f:
@@ -564,7 +571,7 @@ class Subject:
                     # have effective sites #
                     ########################
                     # get strain results of effective sites in this bin
-                    haplotypes, reads_count_by_strains, posterior_probability_dict = longstrain.haplotype.haplotype_identification(
+                    haplotypes, reads_count_by_strains, posterior_probability_dict = haplotype.haplotype_identification(
                         pos_read_names_effective, len(self.sample_names), reads_count_by_strains)
                     """ store the variation of effective sites """
                     chr_haplotype_output.update(Subject._output_haplotypes(haplotypes, pos_genotype_base,
@@ -579,7 +586,7 @@ class Subject:
                         # pos_variant_site_reserved is list of pos, like [100, 108, 111, 134]
                         # pos_geno_read_number is a dict {pos: ([1, 0, "."], [12, 11, 0])}
                         pos_variant_site_reserved, pos_geno_read_number = \
-                            longstrain.haplotype.incorporate_variant_sites_into_haplotype(haplotypes, pos_read_names_variant)
+                            haplotype.incorporate_variant_sites_into_haplotype(haplotypes, pos_read_names_variant)
                         # update isolate variants to total dict of the whole chromosome
                         if len(pos_variant_site_reserved) > 0:
                             for pos_a in pos_variant_site_reserved:
@@ -626,7 +633,7 @@ class Subject:
             print("lambda matrix is")
             print(lambda_matrix)
             # calculate the results of isolate variants sites
-            isolate_variants_result_dict = longstrain.haplotype.infer_isolated_variant_sites(chr_pos_read_names_variant, chr_pos_genotype, chromosome, lambda_matrix)
+            isolate_variants_result_dict = haplotype.infer_isolated_variant_sites(chr_pos_read_names_variant, chr_pos_genotype, chromosome, lambda_matrix)
             chr_haplotype_output.update(isolate_variants_result_dict)
 
             # output all result of this chromosome
@@ -665,6 +672,33 @@ def fqs_species_process(subject_name, fqs_path_list, species_ref, bowtie_ref, ou
     subject1.strain_identification(subject_name)
 
 
+def bams_species_process(subject_name, bams_path_list, species_ref, output_path="./"):
+    """
+    Process fqs with known species name, one species a time
+    :param subject_name: Prefix of the subject
+    :param bams_path_list: abs path of bams is like [path/X.bam, path/Y.bam]
+    :param species_ref: fas reference of one species
+    :param output_path:
+    :return:
+    """
+    # ### change to output path ###
+    os.chdir(output_path)
+    print(f"subject name is: {subject_name}\nfastq list is: {bams_path_list}\nmapping reference is: {species_ref}\n"
+          f"output path is: {output_path}")
+    subject1 = Subject(subject_name, species_ref)
+
+    # add virtual fastqs to Subject class
+    for i in range(len(bams_path_list)):
+        subject1.add_fqs(f"virtual_{i}.fq")
+
+    # get bam file
+    # bam_list = subject1.fqs_to_bams(bowtie_ref)
+    subject1.add_bams(bams_path_list)
+    subject1.coverage_summary()
+    # main function of strain identification
+    subject1.strain_identification(subject_name)
+
+
 if __name__ == "__main__":
     # for one test: python3 longitudinal_microbiome.py
     # /gpfs/data/lilab/home/zhoub03/teddy/ncbi/dbGaP-21556/TEDDY_T1D/1 1 1685
@@ -673,12 +707,23 @@ if __name__ == "__main__":
     # species_process(species_id, case_control_id)
 
     """ for fqs to strain"""
-    subject_name, fqs, species_ref, bowtie_ref = sys.argv[1:5]
-    fqs = fqs.split(":")
-    fqs_species_process(subject_name, [i.split(",") for i in fqs], species_ref, bowtie_ref)
-    command1 = "python3 longitudinal_microbiome.py Bifidobacterium_breve_simu1 " \
-               "Bifidobacterium_breve_simu1_t0_1.fq,Bifidobacterium_breve_simu1_t0_2.fq:" \
-               "Bifidobacterium_breve_simu1_t1_1.fq,Bifidobacterium_breve_simu1_t1_2.fq:" \
-               "Bifidobacterium_breve_simu1_t2_1.fq,Bifidobacterium_breve_simu1_t2_2.fq " \
-               "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve.fas " \
-               "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve"
+    model = sys.argv[1]
+    if model == "fq2strain":
+        subject_name, fqs, species_ref, bowtie_ref, output_path = sys.argv[2:7]
+        fqs = fqs.split(":")
+        # output_path = "/gpfs/data/lilab/home/zhoub03/Blaser_data/LongStrain_test"
+        fqs_species_process(subject_name, [i.split(",") for i in fqs], species_ref, bowtie_ref, output_path)
+        command1 = "python3 longitudinal_microbiome.py fq2strain Bifidobacterium_breve_simu1 " \
+                   "Bifidobacterium_breve_simu1_t0_1.fq,Bifidobacterium_breve_simu1_t0_2.fq:" \
+                   "Bifidobacterium_breve_simu1_t1_1.fq,Bifidobacterium_breve_simu1_t1_2.fq:" \
+                   "Bifidobacterium_breve_simu1_t2_1.fq,Bifidobacterium_breve_simu1_t2_2.fq " \
+                   "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve.fas " \
+                   "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve"
+
+    elif model == "bam2strain":
+        subject_name, bams_path_list, species_ref, output_path = sys.argv[2:6]
+        bams_path_list = bams_path_list.split(",")
+        bams_species_process(subject_name, bams_path_list, species_ref, output_path)
+
+    else:
+        print("Model error! Model must be fq2strain or bam2strain.")
