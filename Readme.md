@@ -24,11 +24,7 @@ http://www.htslib.org/doc/
 
 1. Install the required software and packages
 
-2. 
-
-```
-   
-```
+2. Download all files and deposit them under a directory.
 
 ## Usage
 
