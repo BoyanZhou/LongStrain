@@ -214,9 +214,9 @@ def main():
                            f"--target_species_file. Terminated")
 
         # assembly_summary_path = "/gpfs/data/lilab/home/zhoub03/software/kraken2/NCBI_standard/
-        # library/bacteria/assembly_summary.txt"
-        assembly_summary_path = os.path.join(options.kraken_database, "library", "bacteria", "assembly_summary.txt")
-        longstrain.reference_build.ref_build(options.reference_built_path, target_species_list, assembly_summary_path,
+        # library/bacteria/assembly_summary.txt", we use bacteria, archaea and viral
+        # assembly_summary_path = os.path.join(options.kraken_database, "library", "bacteria", "assembly_summary.txt")
+        longstrain.reference_build.ref_build(options.reference_built_path, target_species_list, options.kraken_database,
                                              my_logger)
 
     elif options.model == "reads_assignment" or options.model == "longitudinal_analysis":
@@ -246,6 +246,9 @@ def main():
                 subject_folder = os.path.join(options.inputdir, subject_name)
                 samples_name_list.append(sorted([i for i in os.listdir(os.path.join(subject_folder)) if
                                                  os.path.isdir(os.path.join(subject_folder, i))]))
+                print(f"Get {','.join(samples_name_list[-1])} under the folder {subject_folder}.")
+                my_logger.info(f"Get {','.join(samples_name_list[-1])} under the folder {subject_folder}.")
+
         # ********************
         # get target species *
         # ********************
@@ -268,7 +271,7 @@ def main():
             open(options.taxon_species_json, encoding="utf-8"))
         my_logger.info(f"All target species: {target_species_list}")
         species_taxids = []  # get its species taxids
-        species_names_with_taxids = []  # some species does have taxids will be skipped
+        species_names_with_taxids = []  # some species does not have taxids will be skipped
         for species_name in target_species_list:
             try:
                 species_taxids.append(species_name_taxid[species_name])
@@ -276,6 +279,10 @@ def main():
             except KeyError:
                 my_logger.info(f"Warning! {species_name} does not have species taxid!")
                 continue
+        if len(species_names_with_taxids) == 0:
+            print(f"Error! No species in the input has species taxid! Can't assign reads.")
+            my_logger.info(f"Error! No species in the input has species taxid! Can't assign reads.")
+            sys.exit()
         # species_names_with_taxids  # only species have taxids included in the following analysis
         # species_taxids
 
@@ -296,9 +303,13 @@ def main():
                     if not os.path.exists(sample_dir):
                         my_logger.info(f"Warning! {sample_dir} does not exist! Skip the sample {sample_name}.")
                         continue
+                    # make directory for assigned reads
+                    if not os.path.exists(assigned_reads_dir):
+                        os.system(f"mkdir {assigned_reads_dir}")
+                        my_logger.info(f"mkdir {assigned_reads_dir}")
+
                     if f"{sample_name}_#.fq" in os.listdir(sample_dir):
                         # single end fq
-                        os.system(f"mkdir {assigned_reads_dir}")
                         single_fq_path = os.path.join(sample_dir, f"{sample_name}_#.fq")
                         longstrain.assign_reads.single_reads_assign(sample_name, single_fq_path,
                                                                     species_names_with_taxids, species_taxids,
@@ -319,6 +330,7 @@ def main():
             # ******************************
             # for each species, processing *
             # ******************************
+            my_logger.info("LongStrain analyzing ... ...")
             for species_name, species_taxid in zip(species_names_with_taxids, species_taxids):
                 species_name_joint = species_name.replace(" ", "_")     # Akkermansia_muciniphila
                 # create a species dir in output path
@@ -339,6 +351,7 @@ def main():
                     # samples_name is a list, ["sample_t0", "sample_t1", "sample_t2"]
                     sample_name_used_list = []
                     fqs_path_list = []
+                    sample_name_with_fq = []
                     for sample_name in samples_name:
                         # **************************************
                         # get fq path under sample's directory *
@@ -351,13 +364,16 @@ def main():
                         if single_fq_name in os.listdir(assigned_reads_dir):
                             sample_name_used_list.append(sample_name)
                             fqs_path_list.append([os.path.join(assigned_reads_dir, single_fq_name)])
+                            sample_name_with_fq.append(sample_name)
                         elif paired_fq_name[0] in os.listdir(assigned_reads_dir) and paired_fq_name[1] in \
                                 os.listdir(assigned_reads_dir):
                             sample_name_used_list.append(sample_name)
                             fqs_path_list.append([os.path.join(assigned_reads_dir, i) for i in paired_fq_name])
+                            sample_name_with_fq.append(sample_name)
 
                     if len(fqs_path_list) > 1:
-                        longstrain.longitudinal_microbiome.fqs_species_process(subject_name, fqs_path_list,
+                        longstrain.longitudinal_microbiome.fqs_species_process(subject_name, sample_name_with_fq,
+                                                                               fqs_path_list,
                                                                                species_reference_fas_path,
                                                                                species_reference_bowtie_path,
                                                                                output_path=species_output_path)
