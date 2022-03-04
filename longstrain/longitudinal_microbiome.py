@@ -7,12 +7,14 @@ Update log:
 Date: 2021/08/01
 Author: Boyan Zhou
 1. modify strain_initial(), can initial with variant sites
+Date: 2022/03/02
+1. Fix a small bug caused by np.column_stack(tuple)
 """
 
 import pysam
 import numpy as np
 import sys
-import longstrain.haplotype
+import longstrain.haplotype as haplotype
 import json
 import os
 
@@ -109,11 +111,11 @@ def get_nonzero_quantile_bins(depth_array, q=0.8, bin_num=5):
 
 # subject has multiple microbiome samples at several time points
 class Subject:
-    def __init__(self, subject_id, reference):
+    def __init__(self, subject_id, samples_name_list, reference):
         self.ID = subject_id
         self.reference = reference  # fasta file
         self.pysam_ref = pysam.FastaFile(self.reference)    # imported fasta file
-        self.sample_names = []
+        self.sample_names = samples_name_list               # sample names
         self.samples = []                                   # pysam files
         self.reads_in_bin_by_chromosome = {}
         self.strain_RA = np.array([])
@@ -128,31 +130,31 @@ class Subject:
     # processing of fqs to bams
     def fqs_to_bams(self, bowtie_reference, thread=4, q_threhold=20):
         bam_list = []
-        for t, fq_pair in enumerate(self.fqs):
-            if os.path.exists(f"{self.ID}_t{t}_q{q_threhold}_sorted_rmdup.bam"):
-                bam_list.append(f"{self.ID}_t{t}_q{q_threhold}_sorted_rmdup.bam")
+        for sample_name, fq_pair in zip(self.sample_names, self.fqs):
+            if os.path.exists(f"{sample_name}_q{q_threhold}_sorted_rmdup.bam"):
+                bam_list.append(f"{sample_name}_q{q_threhold}_sorted_rmdup.bam")
             else:
                 if len(fq_pair) == 2:
                     # pair end fqs
-                    bowtie2_map_command = f"bowtie2 -p {thread} -x {bowtie_reference} -1 {fq_pair[0]} -2 {fq_pair[1]} -S {self.ID}_t{t}.sam"
+                    bowtie2_map_command = f"bowtie2 -p {thread} -x {bowtie_reference} -1 {fq_pair[0]} -2 {fq_pair[1]} -S {sample_name}.sam"
                 else:
                     # single end fq
-                    bowtie2_map_command = f"bowtie2 -p {thread} -x {bowtie_reference} -U {fq_pair[0]} -S {self.ID}_t{t}.sam"
+                    bowtie2_map_command = f"bowtie2 -p {thread} -x {bowtie_reference} -U {fq_pair[0]} -S {sample_name}.sam"
+                print(bowtie2_map_command)
                 os.system(bowtie2_map_command)
-                os.system(f"samtools view -bS -q {q_threhold} {self.ID}_t{t}.sam > {self.ID}_t{t}_q{q_threhold}.bam")
-                os.system(f"samtools sort {self.ID}_t{t}_q{q_threhold}.bam -o {self.ID}_t{t}_q{q_threhold}_sorted.bam")
-                os.system(f"samtools rmdup {self.ID}_t{t}_q{q_threhold}_sorted.bam {self.ID}_t{t}_q{q_threhold}_sorted_rmdup.bam")
-                os.system(f"samtools index {self.ID}_t{t}_q{q_threhold}_sorted_rmdup.bam")
-                os.system(f"rm {self.ID}_t{t}.sam {self.ID}_t{t}_q{q_threhold}.bam {self.ID}_t{t}_q{q_threhold}_sorted.bam")
-                bam_list.append(f"{self.ID}_t{t}_q{q_threhold}_sorted_rmdup.bam")
+                os.system(f"samtools view -bS -q {q_threhold} {sample_name}.sam > {sample_name}_q{q_threhold}.bam")
+                os.system(f"samtools sort {sample_name}_q{q_threhold}.bam -o {sample_name}_q{q_threhold}_sorted.bam")
+                os.system(f"samtools rmdup {sample_name}_q{q_threhold}_sorted.bam {sample_name}_q{q_threhold}_sorted_rmdup.bam")
+                os.system(f"samtools index {sample_name}_q{q_threhold}_sorted_rmdup.bam")
+                os.system(f"rm {sample_name}.sam {sample_name}_q{q_threhold}.bam {sample_name}_q{q_threhold}_sorted.bam")
+                bam_list.append(f"{sample_name}_q{q_threhold}_sorted_rmdup.bam")
         return bam_list
 
     # add microbiome samples to the Subject according to time points
-    def add_bams(self, sample_list):
-        for sample_name in sample_list:
-            print(sample_name)
-            self.sample_names.append(sample_name)
-            self.samples.append(pysam.AlignmentFile(sample_name, "rb", reference_filename=self.reference))
+    def add_bams(self, bam_list):
+        for sample_bam in bam_list:
+            # self.sample_names.append(sample_name)
+            self.samples.append(pysam.AlignmentFile(sample_bam, "rb", reference_filename=self.reference))
 
     # coverage summarize by bins per chromosome
     def coverage_summary(self, bin_len=10000):
@@ -472,19 +474,21 @@ class Subject:
             sample_reads_count_in_target_bins = np.sum(reads_bin_chromosome[all_bin_index, 2:], axis=0)
             # initial counts of secondary strain, can not < 1
             secondary_initial_counts = np.maximum(1, (sample_reads_count_in_target_bins/20).astype(int))
-            reads_count_by_strains = np.column_stack(sample_reads_count_in_target_bins,
+            reads_count_by_strains = np.column_stack((sample_reads_count_in_target_bins,
                                                      secondary_initial_counts,
-                                                     np.ones(np.shape(sample_reads_count_in_target_bins)[0], int))
+                                                     np.ones(np.shape(sample_reads_count_in_target_bins)[0], int)))
             return reads_count_by_strains
 
         else:
             haplotypes, reads_count_by_strains, posterior_probability_dict = haplotype.haplotype_identification(
                 pos_read_names_effective, len(self.sample_names))
+            """
             # record strain proportions
             with open(f"{self.ID}_strain_proportion_record.txt", "w") as record_f:
                 for i in reads_count_by_strains:
                     record_f.write("\t".join([str(j) for j in i]) + "\n")
             # return the np.array of estimated proportion, M by 3 matrix
+            """
             return reads_count_by_strains
 
     def strain_identification(self, output_prefix, bin_len=10000):
@@ -641,15 +645,20 @@ class Subject:
                 output_file.write(chr_haplotype_output[pos])
 
         # print cumulative reads count for all chromosome
-        np.savetxt(f"{output_prefix}_reads_count_by_strain_final.txt", reads_count_by_strains -
-                   reads_count_by_strain_initial, fmt="%d", delimiter="\t")
+        output_read_count_array = (reads_count_by_strains - reads_count_by_strain_initial).astype(dtype=str)
+        with open(f"{output_prefix}_reads_count_by_strain_final.txt", "w") as proportion_result_f:
+            proportion_result_f.write(f"Sample\tPrimary\tSecondary\tNoise\n")
+            for sample_name, sample_count in zip(self.sample_names, output_read_count_array):
+                proportion_result_f.write(sample_name + "\t" + "\t".join(sample_count) + "\n")
+
         output_file.close()
 
 
-def fqs_species_process(subject_name, fqs_path_list, species_ref, bowtie_ref, output_path="./"):
+def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_ref, bowtie_ref, output_path="./"):
     """
     Process fqs with known species name, one species a time
     :param subject_name: Prefix of the subject
+    :param sample_name_list: ["X-t0", "X-t1"]
     :param fqs_path_list: fqs is like [[path/X_1.fq,path/X_2.fq],[path/X.fq]]
     :param species_ref: fas reference of one species
     :param bowtie_ref: corresponding bowtie ref of that fas
@@ -660,7 +669,7 @@ def fqs_species_process(subject_name, fqs_path_list, species_ref, bowtie_ref, ou
     os.chdir(output_path)
     print(f"subject name is: {subject_name}\nfastq list is: {fqs_path_list}\nmapping reference is: {species_ref}\n"
           f"output path is: {output_path}")
-    subject1 = Subject(subject_name, species_ref)
+    subject1 = Subject(subject_name, sample_name_list, species_ref)
     # add fastqs to Subject class
     for i in fqs_path_list:
         subject1.add_fqs(i)
@@ -672,7 +681,7 @@ def fqs_species_process(subject_name, fqs_path_list, species_ref, bowtie_ref, ou
     subject1.strain_identification(subject_name)
 
 
-def bams_species_process(subject_name, bams_path_list, species_ref, output_path="./"):
+def bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path="./"):
     """
     Process fqs with known species name, one species a time
     :param subject_name: Prefix of the subject
@@ -685,7 +694,7 @@ def bams_species_process(subject_name, bams_path_list, species_ref, output_path=
     os.chdir(output_path)
     print(f"subject name is: {subject_name}\nfastq list is: {bams_path_list}\nmapping reference is: {species_ref}\n"
           f"output path is: {output_path}")
-    subject1 = Subject(subject_name, species_ref)
+    subject1 = Subject(subject_name, sample_name_list, species_ref)
 
     # add virtual fastqs to Subject class
     for i in range(len(bams_path_list)):
@@ -709,10 +718,11 @@ if __name__ == "__main__":
     """ for fqs to strain"""
     model = sys.argv[1]
     if model == "fq2strain":
-        subject_name, fqs, species_ref, bowtie_ref, output_path = sys.argv[2:7]
+        subject_name, sample_names, fqs, species_ref, bowtie_ref, output_path = sys.argv[2:8]
         fqs = fqs.split(":")
         # output_path = "/gpfs/data/lilab/home/zhoub03/Blaser_data/LongStrain_test"
-        fqs_species_process(subject_name, [i.split(",") for i in fqs], species_ref, bowtie_ref, output_path)
+        sample_name_list = sample_names.split(",")
+        fqs_species_process(subject_name, sample_name_list, [i.split(",") for i in fqs], species_ref, bowtie_ref, output_path)
         command1 = "python3 longitudinal_microbiome.py fq2strain Bifidobacterium_breve_simu1 " \
                    "Bifidobacterium_breve_simu1_t0_1.fq,Bifidobacterium_breve_simu1_t0_2.fq:" \
                    "Bifidobacterium_breve_simu1_t1_1.fq,Bifidobacterium_breve_simu1_t1_2.fq:" \
@@ -721,9 +731,10 @@ if __name__ == "__main__":
                    "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve"
 
     elif model == "bam2strain":
-        subject_name, bams_path_list, species_ref, output_path = sys.argv[2:6]
+        subject_name, sample_names, bams_path_list, species_ref, output_path = sys.argv[2:7]
         bams_path_list = bams_path_list.split(",")
-        bams_species_process(subject_name, bams_path_list, species_ref, output_path)
+        sample_name_list = sample_names.split(",")
+        bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path)
 
     else:
         print("Model error! Model must be fq2strain or bam2strain.")

@@ -9,6 +9,8 @@ Update log:
 Date: 2021/06/30
 Author: Boyan Zhou
 1. Complete the whole function
+Date: 2021/03/01
+1. Update the function of ref_build, can deal with viral and archaea, not only bacteria
 """
 
 
@@ -62,31 +64,31 @@ class SpeciesRef:
         print(assembly_species)
         if assembly_species.shape[0] == 0:
             logger.info(f"There is no {self.species_name} in the database or {self.species_name} "
-                        f"doesn't have a complete genome.\n")
+                        f"doesn't have a complete genome.")
         else:
             self.complete_genome = True
 
             # get reference_genome
             reference_genome_species = assembly_species[assembly_species["refseq_category"] == "reference genome"]
             if reference_genome_species.shape[0] == 0:
-                logger.info(f"{self.species_name} doesn't have a reference genome (not mean no complete genome).\n")
+                logger.info(f"{self.species_name} doesn't have a reference genome (not mean no complete genome).")
             else:
                 self.reference_genome.update(SpeciesRef._genome_info(reference_genome_species[0:1]))
-                logger.info(f"{self.species_name} has a reference genome.\n")
+                logger.info(f"{self.species_name} has a reference genome.")
 
             # get representative_genome
             representative_genome_species = assembly_species[assembly_species["refseq_category"] ==
                                                              "representative genome"]
             if representative_genome_species.shape[0] == 0:
-                logger.info(f"{self.species_name} doesn't have a representative genome.\n")
+                logger.info(f"{self.species_name} doesn't have a representative genome.")
             else:
                 self.representative_genome.update(SpeciesRef._genome_info(representative_genome_species[0:1]))
-                logger.info(f"{self.species_name} has a representative genome.\n")
+                logger.info(f"{self.species_name} has a representative genome.")
 
             # get common_genome
             common_genome_species = assembly_species[assembly_species["refseq_category"] == "na"]
             if common_genome_species.shape[0] == 0:
-                logger.info(f"{self.species_name} doesn't have a common genome (not mean no complete genome).\n")
+                logger.info(f"{self.species_name} doesn't have a common genome (not mean no complete genome).")
             else:
                 for index, row in common_genome_species.iterrows():
                     self.other_genome.update({row["# assembly_accession"]:
@@ -97,7 +99,7 @@ class SpeciesRef:
                                               "organism_name": row["organism_name"],
                                               "infraspecific_name": row["infraspecific_name"],
                                               "ftp_path": row["ftp_path"]}})
-                logger.info(f"{self.species_name} has common genome.\n")
+                logger.info(f"{self.species_name} has common genome.")
 
     @staticmethod
     def _check_and_build(species_name, logger):
@@ -111,20 +113,20 @@ class SpeciesRef:
         if fna_gz_lens != {}:
             fna_gz = min(fna_gz_lens.items(), key=lambda x: x[1])[0]
         else:
-            logger.info(f"Reference file is not found for {species_name}! Can't create new bowtie build!\n")
+            logger.info(f"Reference file is not found for {species_name}! Can't create new bowtie build!")
 
         if ("_".join(species_name.split(" ")) + ".1.bt2") in os.listdir("./"):
-            logger.info("Bowtie build exists. Not create new bowtie build.\n")
+            logger.info("Bowtie build exists. Not create new bowtie build.")
         else:
             if fna_gz != "":
-                logger.info(f"Reference data exists. Building bowtie reference using {fna_gz} ... ...\n")
+                logger.info(f"Reference data exists. Building bowtie reference using {fna_gz} ... ...")
                 os.system(f"bowtie2-build {fna_gz} {'_'.join(species_name.split(' '))}")
         # unzip the genomic fna file
         fas_full_path = "_".join(species_name.split(" ")) + ".fas"
         if fas_full_path in os.listdir("./"):
-            logger.info("Fasta reference exists. Not create new fasta reference.\n\n")
+            logger.info("Fasta reference exists. Not create new fasta reference.\n")
         else:
-            logger.info(f"Creating new fasta reference using {fna_gz} ... ...\n\n")
+            logger.info(f"Creating new fasta reference using {fna_gz} ... ...\n")
             os.system(f"gunzip -c {fna_gz} > {fas_full_path}")
 
         """ build samtools faidx """
@@ -141,7 +143,7 @@ class SpeciesRef:
         """
         # check the existence of this species' directory
         if os.path.isdir(os.path.join(target_path, "_".join(self.species_name.split(" ")))):
-            logger.info(f"{self.species_name} exists in the path. Not create new directory.\n")
+            logger.info(f"{self.species_name} exists in the path. Not create new directory.")
         else:
             # create new directory to store reference
             os.chdir(target_path)
@@ -150,24 +152,24 @@ class SpeciesRef:
 
         # check the existence of this species' fna ref
         if True in [g.endswith("genomic.fna.gz") for g in os.listdir("./")]:
-            logger.info("Reference data exists. Don't need download from NCBI.\n")
+            logger.info("Reference data exists. Don't need download from NCBI.")
         else:
             # download from NCBI
             if self.complete_genome:
                 if self.reference_genome != {}:
-                    logger.info(f"Building reference for {self.species_name} using reference genome ... ...\n")
+                    logger.info(f"Building reference for {self.species_name} using reference genome ... ...")
                     os.system(f"wget -r -np -nd {self.reference_genome['ftp_path']}")
 
                 elif self.representative_genome != {}:
-                    logger.info(f"Building reference for {self.species_name} using representative genome ... ...\n")
+                    logger.info(f"Building reference for {self.species_name} using representative genome ... ...")
                     os.system(f"wget -r -np -nd {self.representative_genome['ftp_path']}")
 
                 else:
-                    logger.info(f"Building reference for {self.species_name} using common genome ... ...\n")
+                    logger.info(f"Building reference for {self.species_name} using common genome ... ...")
                     os.system(f"wget -r -np -nd {self.other_genome[sorted(self.other_genome.keys())[0]]['ftp_path']}")
             else:
                 logger.info(f"Warning! Did not build reference for {self.species_name} "
-                            f"because of no complete genome!\n\n")
+                            f"because of no complete genome!\n")
 
         # real build process
         SpeciesRef._check_and_build(self.species_name, logger)
@@ -195,7 +197,7 @@ class SpeciesRef:
         os.chdir(os.path.join(target_path, strain_name))
 
         # get data from NCBI
-        logger.info(f"Building reference for strain {strain_name} ... ...\n")
+        logger.info(f"Building reference for strain {strain_name} ... ...")
         os.system(f"wget -r -np -nd {strain_info['ftp_path']}")
 
         # check and build bowtie reference
@@ -272,18 +274,24 @@ class SpeciesRef:
 # assembly = pd.read_table(assembly_summary, skiprows=[0])  # skip the first row of annotation
 # assembly_complete_genome = assembly[assembly["assembly_level"] == "Complete Genome"]
 
-def ref_build(out_path, target_species_list, assembly_summary_path, logger):
+def ref_build(out_path, target_species_list, assembly_summary_parent_path, logger):
     """
     :param out_path: path containing species folder, "out_path/species_name"
     :param target_species_list: list of target species, ["Bifidobacterium longum", "Bacteroides uniformis"]
-    :param assembly_summary_path: Example "/gpfs/data/lilab/home/zhoub03/software/kraken2/NCBI_standard/
+    :param assembly_summary_parent_path: Example "/gpfs/data/lilab/home/zhoub03/software/kraken2/NCBI_standard/
     library/bacteria/assembly_summary.txt"
     :param logger: a logging object
     :return: build a database from a list of target species
     """
-    # get the table containing "Complete Genome"
-    assembly = pd.read_table(assembly_summary_path, skiprows=[0])  # skip the first row of annotation
-    assembly_complete_genome = assembly[assembly["assembly_level"] == "Complete Genome"]
+    # get the table containing "Complete Genome" from the assembly of bacteria, archaea, and viral
+    assembly1 = pd.read_table(os.path.join(assembly_summary_parent_path, "library", "bacteria", "assembly_summary.txt"), skiprows=[0])  # skip the first row of annotation
+    assembly2 = pd.read_table(os.path.join(assembly_summary_parent_path, "library", "archaea", "assembly_summary.txt"),
+                              skiprows=[0])  # skip the first row of annotation
+    assembly3 = pd.read_table(os.path.join(assembly_summary_parent_path, "library", "viral", "assembly_summary.txt"),
+                              skiprows=[0])  # skip the first row of annotation
+    assembly_combined = assembly1.append(assembly2, ignore_index=True)
+    assembly_combined = assembly_combined.append(assembly3, ignore_index=True)
+    assembly_complete_genome = assembly_combined[assembly_combined["assembly_level"] == "Complete Genome"]
 
     # add bowtie2 to environment variable
     # for each species in the list
