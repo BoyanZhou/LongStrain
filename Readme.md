@@ -2,7 +2,6 @@
 ===========================================
 
 This code was used for the paper "An integrated strain-level analytic pipeline utilizing longitudinal metagenomic data".  
-Please report to *boyanzhou1992@gmail.com* if you have any questions.  
 
 ## Requirements
 
@@ -27,12 +26,6 @@ http://www.htslib.org/doc/
 2. Download all files and deposit them under a directory.
 
 ## Usage
-The detailed introduction can be found in the WIKI: https://github.com/BoyanZhou/LongStrain/wiki
-
-
-* ```-l PATH/all_subjects.log``` is the absolute path of log file.
-
-**Warnning:** LongStrain works on longitudinal or concurrent samples, Does NOT work on a single sample.
-
+The detailed introduction can be found in the WIKI: **https://github.com/BoyanZhou/LongStrain/wiki**
 
 **Please contact boyanzhou1992@gmail.com for any questions or bug reporting.**
