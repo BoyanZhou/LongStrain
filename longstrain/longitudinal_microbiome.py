@@ -9,6 +9,8 @@ Author: Boyan Zhou
 1. modify strain_initial(), can initial with variant sites
 Date: 2022/03/02
 1. Fix a small bug caused by np.column_stack(tuple)
+Date: 2022/03/28
+modify fqs_species_process: not rm temporary bam file and not run LongStrain algorithm
 """
 
 import pysam
@@ -116,12 +118,13 @@ class Subject:
         self.reference = reference  # fasta file
         self.pysam_ref = pysam.FastaFile(self.reference)    # imported fasta file
         self.sample_names = samples_name_list               # sample names
-        self.samples = []                                   # pysam files
+        self.samples = []                                   # pysam files, 1-to-1 with self.sample_names
         self.reads_in_bin_by_chromosome = {}
         self.strain_RA = np.array([])
         # strain_RA_initial need to be initialized in regions with adequate coverage
         self.strain_RA_initial = np.array([])
         self.fqs = []
+        self.haplotype_filename = ""
 
     # add fqs, [fq1, fq2]
     def add_fqs(self, paired_fqs):
@@ -146,7 +149,7 @@ class Subject:
                 os.system(f"samtools sort {sample_name}_q{q_threhold}.bam -o {sample_name}_q{q_threhold}_sorted.bam")
                 os.system(f"samtools rmdup {sample_name}_q{q_threhold}_sorted.bam {sample_name}_q{q_threhold}_sorted_rmdup.bam")
                 os.system(f"samtools index {sample_name}_q{q_threhold}_sorted_rmdup.bam")
-                os.system(f"rm {sample_name}.sam {sample_name}_q{q_threhold}.bam {sample_name}_q{q_threhold}_sorted.bam")
+                # os.system(f"rm {sample_name}.sam {sample_name}_q{q_threhold}.bam {sample_name}_q{q_threhold}_sorted.bam")
                 bam_list.append(f"{sample_name}_q{q_threhold}_sorted_rmdup.bam")
         return bam_list
 
@@ -155,6 +158,41 @@ class Subject:
         for sample_bam in bam_list:
             # self.sample_names.append(sample_name)
             self.samples.append(pysam.AlignmentFile(sample_bam, "rb", reference_filename=self.reference))
+
+    # horizontal genome coverage summary: covered by at least several reads, must after add_bams
+    def horizontal_genome_coverage(self):
+        chr_name_list = list(self.samples[0].references)
+        chr_len_list = list(self.samples[0].lengths)
+        horizontal_coverage_f = open(f"{self.ID}_horizontal_genome_coverage.txt", "w")
+
+        # write the header of horizontal_genome_coverage file
+        file_header = ["Contig", "Length"]
+        for sample_name in self.sample_names:
+            file_header.extend([f"{sample_name}_1X", f"{sample_name}_5X", f"{sample_name}_10X"])
+        horizontal_coverage_f.write("\t".join(file_header) + "\n")
+        n_at_depth_all = []     # each element is a chr
+        # record coverage rate in each chromosome
+        for chr_name, chr_len in zip(chr_name_list, chr_len_list):
+            chr_record = [chr_name, str(chr_len)]
+            n_at_depth_chr = []
+            for pysam_obj in self.samples:
+                # tuple of four bases count, row number is 4, col number is total site
+                count_tuple = pysam_obj.count_coverage(chr_name, start=None, stop=None, region=None, quality_threshold=15, read_callback='all')
+                count_array = np.array(count_tuple).T
+                depth_all_sites = np.sum(count_array, axis=1)   # series, length is the chr length
+                n_at_depth = [np.sum(depth_all_sites > 0), np.sum(depth_all_sites > 5), np.sum(depth_all_sites > 10)]
+                n_at_depth_chr.extend(n_at_depth)
+                # record coverage rate at different depth level for this sample
+                chr_record.extend([str(i/chr_len) for i in n_at_depth])
+            horizontal_coverage_f.write("\t".join(chr_record) + "\n")
+            n_at_depth_all.append(n_at_depth_chr)   # add count record of each chr
+        # total coverage rate across all chromosome
+        n_at_depth_sum = np.sum(np.array(n_at_depth_all), axis=0)   # count of samples at all chr, Series
+        chr_len_sum = sum(chr_len_list)
+        chr_sum_record = ["All_Contigs", str(chr_len_sum)]
+        chr_sum_record.extend(list((n_at_depth_sum/chr_len_sum).astype(str)))
+        horizontal_coverage_f.write("\t".join(chr_sum_record) + "\n")
+        horizontal_coverage_f.close()
 
     # coverage summarize by bins per chromosome
     def coverage_summary(self, bin_len=10000):
@@ -491,6 +529,12 @@ class Subject:
             """
             return reads_count_by_strains
 
+    def generate_vcf(self, output_prefix):
+        if len(self.haplotype_filename):
+            print(f"No haplotype file is generated!")
+        else:
+            vcf_filename = f"{output_prefix}_primary_secondary.vcf"
+
     def strain_identification(self, output_prefix, bin_len=10000):
         """
         # Estimate strain RA and strain's variations
@@ -528,6 +572,7 @@ class Subject:
         # np.savetxt(f"{output_prefix}_reads_count_by_strain_initial.txt", reads_count_by_strain_initial, fmt="%d", delimiter="\t")
 
         output_file = open(f"{output_prefix}_haplotypes.txt", "w")
+        self.haplotype_filename = f"{output_prefix}_haplotypes.txt"
         ###############################
         # screen bins and chromosomes #
         ###############################
@@ -644,17 +689,38 @@ class Subject:
             for pos in sorted(chr_haplotype_output.keys()):
                 output_file.write(chr_haplotype_output[pos])
 
+        # print initial reads count for all chromosome
+        with open(f"{output_prefix}_reads_count_by_strain_initial.txt", "w") as count_result_f:
+            count_result_f.write(f"Sample\tPrimary\tSecondary\tNoise\n")
+            for sample_name, sample_count in zip(self.sample_names, reads_count_by_strain_initial):
+                count_result_f.write(sample_name + "\t" + "\t".join(sample_count.astype(dtype=str)) + "\n")
         # print cumulative reads count for all chromosome
         output_read_count_array = (reads_count_by_strains - reads_count_by_strain_initial).astype(dtype=str)
-        with open(f"{output_prefix}_reads_count_by_strain_final.txt", "w") as proportion_result_f:
+        with open(f"{output_prefix}_reads_count_by_strain_final.txt", "w") as count_result_f:
+            count_result_f.write(f"Sample\tPrimary\tSecondary\tNoise\n")
+            for sample_name, sample_count in zip(self.sample_names, output_read_count_array):
+                count_result_f.write(sample_name + "\t" + "\t".join(sample_count.astype(dtype=str)) + "\n")
+
+        # print cumulative proportions for all chromosome
+        with open(f"{output_prefix}_proportion_by_strain_initial.txt", "w") as proportion_result_f:
+            proportion_result_f.write(f"Sample\tPrimary\tSecondary\tNoise\n")
+            for sample_name, sample_count in zip(self.sample_names, reads_count_by_strain_initial):
+                sample_count = sample_count.astype(dtype=int)
+                sample_prop = sample_count / np.sum(sample_count)
+                proportion_result_f.write(sample_name + "\t" + "\t".join(sample_prop.astype(dtype=str)) + "\n")
+
+        # print cumulative proportions for all chromosome
+        with open(f"{output_prefix}_proportion_by_strain_final.txt", "w") as proportion_result_f:
             proportion_result_f.write(f"Sample\tPrimary\tSecondary\tNoise\n")
             for sample_name, sample_count in zip(self.sample_names, output_read_count_array):
-                proportion_result_f.write(sample_name + "\t" + "\t".join(sample_count) + "\n")
+                sample_count = sample_count.astype(dtype=int)
+                sample_prop = sample_count/np.sum(sample_count)
+                proportion_result_f.write(sample_name + "\t" + "\t".join(sample_prop.astype(dtype=str)) + "\n")
 
         output_file.close()
 
 
-def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_ref, bowtie_ref, output_path="./"):
+def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_ref, bowtie_ref, output_path):
     """
     Process fqs with known species name, one species a time
     :param subject_name: Prefix of the subject
@@ -666,6 +732,8 @@ def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_r
     :return:
     """
     # ### change to output path ###
+    if not os.path.exists(output_path):
+        os.system(f"mkdir -p {output_path}")
     os.chdir(output_path)
     print(f"subject name is: {subject_name}\nfastq list is: {fqs_path_list}\nmapping reference is: {species_ref}\n"
           f"output path is: {output_path}")
@@ -679,9 +747,11 @@ def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_r
     subject1.coverage_summary()
     # main function of strain identification
     subject1.strain_identification(subject_name)
+    # generate vcf file
+    # subject1.
 
 
-def bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path="./"):
+def bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path):
     """
     Process fqs with known species name, one species a time
     :param subject_name: Prefix of the subject
@@ -691,6 +761,8 @@ def bams_species_process(subject_name, sample_name_list, bams_path_list, species
     :return:
     """
     # ### change to output path ###
+    if not os.path.exists(output_path):
+        os.system(f"mkdir -p {output_path}")
     os.chdir(output_path)
     print(f"subject name is: {subject_name}\nfastq list is: {bams_path_list}\nmapping reference is: {species_ref}\n"
           f"output path is: {output_path}")

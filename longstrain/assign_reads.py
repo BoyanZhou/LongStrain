@@ -14,7 +14,7 @@ import sys
 
 
 def paired_reads_assign(prefix, paired_fq_path, species_name_list, species_taxid_list, taxid_species_taxid_dict,
-                        output_path):
+                        output_path, db_name):
     """
     Assign paired reads of Kraken2 results that fall into species_taxid we need
     :param prefix: prefix of sample and output
@@ -23,6 +23,7 @@ def paired_reads_assign(prefix, paired_fq_path, species_name_list, species_taxid
     :param species_taxid_list: the same order as species_name_list
     :param taxid_species_taxid_dict:
     :param output_path: collect taxid of sub-species level to species level
+    :param db_name: must be NCBI or GTDB
     :return:
     """
     # check exist of paired fqs
@@ -49,25 +50,45 @@ def paired_reads_assign(prefix, paired_fq_path, species_name_list, species_taxid
         line2 = fq2.readline()
         taxid1 = line1.rstrip().split("|")[-1]
         taxid2 = line2.rstrip().split("|")[-1]
-        try:
-            # reads from fq1 and fq2 belong to the same species, else deprecated
-            read1_species_taxid = taxid_species_taxid_dict[taxid1]
-            read2_species_taxid = taxid_species_taxid_dict[taxid2]
-            if read1_species_taxid == read2_species_taxid:
-                species_taxid_out[read1_species_taxid][0].write(line1)
-                species_taxid_out[read1_species_taxid][1].write(line2)
-                for i in range(3):
-                    species_taxid_out[read1_species_taxid][0].write(fq1.readline())
-                    species_taxid_out[read1_species_taxid][1].write(fq2.readline())
+
+        if db_name == "GTDB":
+            if taxid1 == taxid2:
+                try:
+                    species_taxid_out[taxid1][0].write(line1)
+                    species_taxid_out[taxid1][1].write(line2)
+                    for i in range(3):
+                        species_taxid_out[taxid1][0].write(fq1.readline())
+                        species_taxid_out[taxid1][1].write(fq2.readline())
+                except KeyError:
+                    # taxid1 not in the species_taxid_list
+                    for i in range(3):
+                        fq1.readline()
+                        fq2.readline()
             else:
                 for i in range(3):
                     fq1.readline()
                     fq2.readline()
 
-        except KeyError:
-            for i in range(3):
-                fq1.readline()
-                fq2.readline()
+        else:
+            # db_name == "NCBI"
+            try:
+                # reads from fq1 and fq2 belong to the same species, else deprecated
+                read1_species_taxid = taxid_species_taxid_dict[taxid1]
+                read2_species_taxid = taxid_species_taxid_dict[taxid2]
+                if read1_species_taxid == read2_species_taxid:
+                    species_taxid_out[read1_species_taxid][0].write(line1)
+                    species_taxid_out[read1_species_taxid][1].write(line2)
+                    for i in range(3):
+                        species_taxid_out[read1_species_taxid][0].write(fq1.readline())
+                        species_taxid_out[read1_species_taxid][1].write(fq2.readline())
+                else:
+                    for i in range(3):
+                        fq1.readline()
+                        fq2.readline()
+            except KeyError:
+                for i in range(3):
+                    fq1.readline()
+                    fq2.readline()
 
     for fq_files in species_taxid_out.values():
         fq_files[0].close()
@@ -77,7 +98,7 @@ def paired_reads_assign(prefix, paired_fq_path, species_name_list, species_taxid
 
 
 def single_reads_assign(prefix, single_fq_path, species_name_list, species_taxid_list, taxid_species_taxid_dict,
-                        output_path):
+                        output_path, db_name):
     """
     Assign paired reads of Kraken2 results that fall into species_taxid we need
     :param prefix: prefix of sample and output
@@ -86,6 +107,7 @@ def single_reads_assign(prefix, single_fq_path, species_name_list, species_taxid
     :param species_taxid_list: the same order as species_name_list
     :param taxid_species_taxid_dict:
     :param output_path: collect taxid of sub-species level to species level
+    :param db_name: must be NCBI or GTDB
     :return:
     """
     if os.path.exists(single_fq_path):
@@ -107,16 +129,27 @@ def single_reads_assign(prefix, single_fq_path, species_name_list, species_taxid
         if not line1:
             break
         taxid1 = line1.rstrip().split("|")[-1]
-        try:
-            # reads from fq1 belong to species_taxid_list
-            read1_species_taxid = taxid_species_taxid_dict[taxid1]
-            species_taxid_out[read1_species_taxid].write(line1)
-            for i in range(3):
-                species_taxid_out[read1_species_taxid].write(fq1.readline())
-        except KeyError:
-            # read1_species_taxid not in species_taxid_list
-            for i in range(3):
-                fq1.readline()
+        if db_name == "GTDB":
+            try:
+                species_taxid_out[taxid1].write(line1)
+                for i in range(3):
+                    species_taxid_out[taxid1].write(fq1.readline())
+            except KeyError:
+                # read1_species_taxid not in species_taxid_list
+                for i in range(3):
+                    fq1.readline()
+        else:
+            # db_name == "NCBI"
+            try:
+                # reads from fq1 belong to species_taxid_list
+                read1_species_taxid = taxid_species_taxid_dict[taxid1]
+                species_taxid_out[read1_species_taxid].write(line1)
+                for i in range(3):
+                    species_taxid_out[read1_species_taxid].write(fq1.readline())
+            except KeyError:
+                # read1_species_taxid not in species_taxid_list
+                for i in range(3):
+                    fq1.readline()
 
     for fq_file in species_taxid_out.values():
         fq_file.close()

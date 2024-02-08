@@ -71,12 +71,16 @@ def arg_parsed():
     group3 = parser.add_argument_group("Build Species Reference", "Build Genome Reference Database For Target Species")
     arg = group3.add_argument
     arg('--reference_built_path', dest="reference_built_path", type=str, help="Full path where LongStrain reference database should be built.")
+    arg('--GTDB_dict', dest="GTDB_dict", type=str, help="Full path of GTDB_dict_json, use this option only if you use the GTDB of Kraken2.")
+    arg('--GTDB_rep_genome_dir', dest="GTDB_rep_genome_dir", type=str, help="The directory where the representative genomes of GTDB are uncompressed, use this option only if you use the GTDB of Kraken2.")
 
     # option group "reads_assignment"
     group4 = parser.add_argument_group("Reads Assignment", "Assign reads produced by Kraken to target species")
     arg = group4.add_argument
-    arg('--taxon_species_json', dest="taxon_species_json", type=str, help="Full path of json file storing taxon and species name.")
-
+    arg('--NCBI_taxon_species_json', dest="NCBI_taxon_species_json", type=str, help="Full path of json file storing taxon and species name in NCBI database.\n"
+                                                                                    "Only use NCBI_taxon_species_json or GTDB_taxon_species_json")
+    arg('--GTDB_taxon_species_json', dest="GTDB_taxon_species_json", type=str, help="Full path of json file storing taxon and species name in GTDB database.\n"
+                                                                                    "Only use NCBI_taxon_species_json or GTDB_taxon_species_json")
     # option group "longitudinal_analysis"
     # group5 = parser.add_argument_group("Longitudinal Analysis", "Analyze longitidinal assigned reads by previous steps")
     # arg = group5.add_argument

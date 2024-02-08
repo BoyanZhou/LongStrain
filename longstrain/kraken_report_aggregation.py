@@ -10,6 +10,8 @@ Date: 2022/02/22
 1.  Add the parameter of host_species_to_remove to remove the possible host counts in RA calculation,
     default "Homo sapiens"
 2.  Add the function to output
+Date: 2022/03/11
+
 """
 
 import numpy as np
@@ -129,8 +131,13 @@ class CombinedReportsRA:
                     break
                 out_f.write(taxon_RA[0] + "\t" + "\t".join(np.array(taxon_RA[1]).astype("str")) + "\n")
 
+##########################################################################
+##########################################################################
+# #   Main Function: Generate combined Kraken2 report in RA or Count   # #
+##########################################################################
+##########################################################################
 
-# main function
+
 def combine_kraken_result_to_RA(samples_name_process_list, samples_kraken_report_path_process_list,
                                 combined_relative_abundance_path, host_species_to_remove="Homo sapiens"):
     """
@@ -155,3 +162,59 @@ def combine_kraken_result_to_RA(samples_name_process_list, samples_kraken_report
 
     # output combined RA above the threshold
     combined_reports.report_combined_RA(combined_relative_abundance_path)
+
+
+def combine_Kraken_counts_report(combined_raw_counts_output_path, input_reports_abs_path_list, sample_names_list):
+    """
+    The order of taxa is determined by the first sample in the list. All reports must have the same length of taxa.
+    Collect the counts of all taxa of each sample's report in the dict: all_sample_combined_counts_dict
+    Then output the counts of all samples in the order of taxa order in the first sample
+    :param combined_raw_counts_output_path: path of combined output reports
+    :param input_reports_abs_path_list: by default the length should be > 1, reports need to be combined
+    :param sample_names_list: should have the same len with input_reports_abs_path_list
+    :return:
+    """
+    if len(input_reports_abs_path_list) < 2:
+        print("The number of reports that are needed to be combined is smaller that 2.\n"
+              "We do not need to combine it.")
+    elif len(input_reports_abs_path_list) != len(sample_names_list):
+        print("Error! The number of reports does not equal to the number of sample names.")
+    else:
+        # store the order of all taxa, and build the original dict
+        taxa_list = []
+        all_sample_combined_counts_dict = {}    # {taxon: [sample1_count, sample2_count]}
+        with open(input_reports_abs_path_list[0], "r") as first_report:
+            for line in first_report:
+                cols = line.split("\t")
+                taxa_list.append(cols[0])
+                all_sample_combined_counts_dict.update({cols[0]: []})
+
+        sample_exist_list = []  # samples that have all same taxon
+        for report_abs_path, sample_name in zip(input_reports_abs_path_list, sample_names_list):
+            #####################################
+            # get the count info of each report #
+            #####################################
+            print(f"Processing {report_abs_path} ... ...")
+            count_dict_current_sample = {}
+            with open(report_abs_path, "r") as report_f:
+                for line in report_f:
+                    cols = line.strip().split("\t")
+                    count_dict_current_sample.update({cols[0]: cols[1]})
+            # if the taxa match exactly
+            if len(count_dict_current_sample) == len(taxa_list):
+                sample_exist_list.append(sample_name)
+                for taxon in taxa_list:
+                    all_sample_combined_counts_dict[taxon].append(count_dict_current_sample[taxon])
+            else:
+                ###############################################
+                # omit the sample does not exactly same taxon #
+                ###############################################
+                print(f"{sample_name} does not have same taxon. Omit it!")
+                continue
+
+        # output the results of all sample
+        with open(combined_raw_counts_output_path, "w") as counts_out_f:
+            counts_out_f.write("Taxon\t" + "\t".join(sample_exist_list) + "\n")
+            # each ordered taxa
+            for taxon_name in taxa_list:
+                counts_out_f.write(taxon_name + "\t" + "\t".join(all_sample_combined_counts_dict[taxon_name]) + "\n")

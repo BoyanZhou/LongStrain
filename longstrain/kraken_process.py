@@ -14,7 +14,7 @@ import sys
 
 
 def kraken_process_total(sample_name_list, all_sample_fq_path_list, sample_output_folder_list, kraken_database_path,
-                         logger):
+                         logger, whether_use_mpa_style=False):
     """
     Get processed fq and relative abundance report by Kraken
     :param sample_name_list: ["sample1", "sample2"]
@@ -25,6 +25,9 @@ def kraken_process_total(sample_name_list, all_sample_fq_path_list, sample_outpu
     :return: sample_output.txt, sample_report.txt, for single,
     """
 
+    use_mpa_style = ""
+    if whether_use_mpa_style:
+        use_mpa_style = "--use-mpa-style "
     for sample_index in range(len(sample_name_list)):
         sample_name = sample_name_list[sample_index]
         sample_fq_path_list = all_sample_fq_path_list[sample_index]
@@ -34,13 +37,13 @@ def kraken_process_total(sample_name_list, all_sample_fq_path_list, sample_outpu
         if len(sample_fq_path_list) == 1:
             # single
             command_kraken2 = f"kraken2 --db {kraken_database_path} --report {sample_output_folder}/{sample_name}_" \
-                              f"report.txt --use-mpa-style --report-zero-counts --classified-out " \
+                              f"report.txt {use_mpa_style}--use-names --report-zero-counts --classified-out " \
                               f"{sample_output_folder}/{sample_name}_#.fq {sample_fq_path_list[0]} " \
                               f"--output {sample_output_folder}/{sample_name}_output.txt"
         elif len(sample_fq_path_list) == 2:
             # paied
             command_kraken2 = f"kraken2 --db {kraken_database_path} --report {sample_output_folder}/{sample_name}_" \
-                              f"report.txt --use-mpa-style --report-zero-counts --paired --classified-out " \
+                              f"report.txt {use_mpa_style}--use-names --report-zero-counts --paired --classified-out " \
                               f"{sample_output_folder}/{sample_name}_#.fq {sample_fq_path_list[0]} " \
                               f"{sample_fq_path_list[1]} --output {sample_output_folder}/{sample_name}_output.txt"
         else:
