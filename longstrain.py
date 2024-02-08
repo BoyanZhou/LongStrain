@@ -82,6 +82,11 @@ def main():
     ################
     # set log file #
     ################
+    # in case the dir of log not exist
+    log_dir = os.path.split(options.logfile)[0]
+    if not os.path.exists(log_dir):
+        os.system(f"mkdir -p {log_dir}")
+
     logging.basicConfig(filename=options.logfile, format='%(asctime)s\t%(levelname)s\t%(name)s: %(message)s',
                         level=logging.DEBUG)
     handler = logging.StreamHandler()
@@ -216,8 +221,13 @@ def main():
         # assembly_summary_path = "/gpfs/data/lilab/home/zhoub03/software/kraken2/NCBI_standard/
         # library/bacteria/assembly_summary.txt", we use bacteria, archaea and viral
         # assembly_summary_path = os.path.join(options.kraken_database, "library", "bacteria", "assembly_summary.txt")
-        longstrain.reference_build.ref_build(options.reference_built_path, target_species_list, options.kraken_database,
-                                             my_logger)
+        if options.GTDB_dict and options.GTDB_rep_genome_dir:
+            # use the GTDB of Kraken2
+            longstrain.reference_build_GTDB.ref_build_gtdb(options.reference_built_path, target_species_list,
+                                                           options.GTDB_dict, options.GTDB_rep_genome_dir, my_logger)
+        else:
+            longstrain.reference_build.ref_build(options.reference_built_path, target_species_list,
+                                                 options.kraken_database, my_logger)
 
     elif options.model == "reads_assignment" or options.model == "longitudinal_analysis":
         # the input path should be the output path of "fastq_preprocess"
@@ -266,12 +276,30 @@ def main():
         # ******************************
         # get species names and taxids *
         # ******************************
-        # get species comparison table
-        taxid_species_taxid, taxid_species_name, species_name_taxid = json.load(
-            open(options.taxon_species_json, encoding="utf-8"))
         my_logger.info(f"All target species: {target_species_list}")
         species_taxids = []  # get its species taxids
         species_names_with_taxids = []  # some species does not have taxids will be skipped
+        # get species comparison table
+        if options.NCBI_taxon_species_json:
+            # # 1. NCBI database
+            taxid_species_taxid, taxid_species_name, species_name_taxid = json.load(
+                open(options.NCBI_taxon_species_json, encoding="utf-8"))
+            db_name = "NCBI"
+        elif options.GTDB_taxon_species_json:
+            # # 2. GTDB database
+            taxid_species_taxid = {}
+            db_name = "GTDB"
+            with open(options.GTDB_taxon_species_json, "r") as json_f:
+                data = json.load(json_f)
+                taxid_species_name_dict = data["dict1"]
+                species_name_taxid = {value: key for key, value in taxid_species_name_dict.items()}
+                species_name_taxid_add = {i.replace("_", " "): species_name_taxid[i] for i in species_name_taxid.keys() if "_" in i}
+                species_name_taxid.update(species_name_taxid_add)
+                # species_name_genome_dict = data["dict2"]
+        else:
+            print(f"Error! Please specify the database by --NCBI_taxon_species_json or --GTDB_taxon_species_json.")
+            sys.exit()
+
         for species_name in target_species_list:
             try:
                 species_taxids.append(species_name_taxid[species_name])
@@ -279,6 +307,7 @@ def main():
             except KeyError:
                 my_logger.info(f"Warning! {species_name} does not have species taxid!")
                 continue
+
         if len(species_names_with_taxids) == 0:
             print(f"Error! No species in the input has species taxid! Can't assign reads.")
             my_logger.info(f"Error! No species in the input has species taxid! Can't assign reads.")
@@ -313,14 +342,14 @@ def main():
                         single_fq_path = os.path.join(sample_dir, f"{sample_name}_#.fq")
                         longstrain.assign_reads.single_reads_assign(sample_name, single_fq_path,
                                                                     species_names_with_taxids, species_taxids,
-                                                                    taxid_species_taxid, assigned_reads_dir)
+                                                                    taxid_species_taxid, assigned_reads_dir, db_name)
                     elif f"{sample_name}__1.fq" in os.listdir(sample_dir) and f"{sample_name}__2.fq" in os.listdir(sample_dir):
                         # paired end fqs
                         paired_fq_path = [os.path.join(sample_dir, f"{sample_name}__1.fq"),
                                           os.path.join(sample_dir, f"{sample_name}__2.fq")]
                         longstrain.assign_reads.paired_reads_assign(sample_name, paired_fq_path,
                                                                     species_names_with_taxids, species_taxids,
-                                                                    taxid_species_taxid, assigned_reads_dir)
+                                                                    taxid_species_taxid, assigned_reads_dir, db_name)
 
         # ******************************
         # step5: longitudinal_analysis *
