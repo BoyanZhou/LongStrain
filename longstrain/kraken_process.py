@@ -14,7 +14,7 @@ import sys
 
 
 def kraken_process_total(sample_name_list, all_sample_fq_path_list, sample_output_folder_list, kraken_database_path,
-                         logger, whether_use_mpa_style=False):
+                         logger, whether_use_mpa_style=True):
     """
     Get processed fq and relative abundance report by Kraken
     :param sample_name_list: ["sample1", "sample2"]
