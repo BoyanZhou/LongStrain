@@ -19,6 +19,7 @@ import sys
 import longstrain.haplotype as haplotype
 import json
 import os
+import argparse
 
 
 class TaxonSpecies:
@@ -747,8 +748,6 @@ def fqs_species_process(subject_name, sample_name_list, fqs_path_list, species_r
     subject1.coverage_summary()
     # main function of strain identification
     subject1.strain_identification(subject_name)
-    # generate vcf file
-    # subject1.
 
 
 def bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path):
@@ -780,33 +779,51 @@ def bams_species_process(subject_name, sample_name_list, bams_path_list, species
     subject1.strain_identification(subject_name)
 
 
-if __name__ == "__main__":
-    # for one test: python3 longitudinal_microbiome.py
-    # /gpfs/data/lilab/home/zhoub03/teddy/ncbi/dbGaP-21556/TEDDY_T1D/1 1 1685
-    # target_path, case_control_id, species_id = sys.argv[1:4]
-    # os.chdir(target_path)
-    # species_process(species_id, case_control_id)
+def get_args():
+    """Parses command-line arguments and returns them."""
+    parser = argparse.ArgumentParser(description="Longitudinal analysis for a single target species.")
+    # Define command-line arguments
+    parser.add_argument("-m", "--work-mode", type=str, required=True, choices=['fq2strain', 'bam2strain'],
+                        help="fq2strain: from raw fsatq files to strain analysis; \n"
+                             "bam2strain: from aligned bam files to strain analysis.")
+    parser.add_argument("-s", "--subject-name", type=str, required=True, help="Name/ID of a subject.")
+    parser.add_argument("-l", "--longitudinal-prefix", type=str, required=True, help="Prefixes of longitudinal samples from that subject like: subject_t1,subject_t2 \n"
+                                                                                      "They are corresponding longitudinal names from different time-points (t1, t2) separated by ','.")
+    parser.add_argument("-f", "--fq-files", type=str, help="Longitudinal fq files like: PATH/subject_t1_R1.fastq.gz,PATH/subject_t1_R2.fastq.gz:PATH/subject_t2_R1.fastq.gz,PATH/subject_t2_R2.fastq.gz \n"
+                                                           "They are corresponding longitudinal samples, fastqs from different time-points (t1, t2) separated by ':', paired fastqs from one sample separated by ',' ")
+    parser.add_argument("-b", "--bam-files", type=str,
+                        help="Longitudinal bam files like: PATH/subject_t1.bam,PATH/subject_t2.bam \n"
+                             "They are corresponding longitudinal samples, bams from different time-points (t1, t2) separated by ','")
+    parser.add_argument("-r", "--reference", type=str, required=True, help="Path of the reference file in fasta format, \n"
+                                                                           "e.g. PATH/my_strain/Bifidobacterium_breve/Bifidobacterium_breve.fas")
+    parser.add_argument("-w", "--bowtie-ref", type=str, required=True, help="Path of the reference file built by bowtie2 from fasta reference, \n"
+                                                                           "e.g. PATH/my_strain/Bifidobacterium_breve/Bifidobacterium_breve")
+    parser.add_argument("-o", "--output-folder", type=str, required=True, help="Path to the output folder.")
+    return parser.parse_args()
 
-    """ for fqs to strain"""
-    model = sys.argv[1]
-    if model == "fq2strain":
-        subject_name, sample_names, fqs, species_ref, bowtie_ref, output_path = sys.argv[2:8]
-        fqs = fqs.split(":")
+
+if __name__ == "__main__":
+    args = get_args()
+    subject_name = args.subject_name
+    sample_names = args.longitudinal_prefix.split(",")
+    species_ref = args.reference
+    bowtie_ref = args.bowtie_ref
+    output_path = args.output_folder
+    if args.work_mode == "fq2strain":
+        fqs = args.fq_files.split(":")
         # output_path = "/gpfs/data/lilab/home/zhoub03/Blaser_data/LongStrain_test"
-        sample_name_list = sample_names.split(",")
-        fqs_species_process(subject_name, sample_name_list, [i.split(",") for i in fqs], species_ref, bowtie_ref, output_path)
+        fqs_species_process(subject_name, sample_names, [i.split(",") for i in fqs], species_ref, bowtie_ref, output_path)
+        """
         command1 = "python3 longitudinal_microbiome.py fq2strain Bifidobacterium_breve_simu1 " \
                    "Bifidobacterium_breve_simu1_t0_1.fq,Bifidobacterium_breve_simu1_t0_2.fq:" \
                    "Bifidobacterium_breve_simu1_t1_1.fq,Bifidobacterium_breve_simu1_t1_2.fq:" \
                    "Bifidobacterium_breve_simu1_t2_1.fq,Bifidobacterium_breve_simu1_t2_2.fq " \
                    "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve.fas " \
                    "/gpfs/data/lilab/home/zhoub03/software/my_strain/Bifidobacterium_breve/Bifidobacterium_breve"
-
-    elif model == "bam2strain":
-        subject_name, sample_names, bams_path_list, species_ref, output_path = sys.argv[2:7]
-        bams_path_list = bams_path_list.split(",")
-        sample_name_list = sample_names.split(",")
-        bams_species_process(subject_name, sample_name_list, bams_path_list, species_ref, output_path)
+        """
+    elif args.work_mode == "bam2strain":
+        bams_path_list = args.bam_files.split(",")
+        bams_species_process(subject_name, sample_names, bams_path_list, species_ref, output_path)
 
     else:
         print("Model error! Model must be fq2strain or bam2strain.")
